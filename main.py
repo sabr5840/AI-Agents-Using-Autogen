@@ -1,7 +1,9 @@
 import os
 from dotenv import load_dotenv
+from autogen import AssistantAgent, UserProxyAgent
 
-load_dotenv()  # Læs .env filen
+
+load_dotenv()
 
 LLM_CONFIG = {
     "config_list": [
@@ -9,16 +11,32 @@ LLM_CONFIG = {
             "model": "open-mistral-nemo",
             "api_key": os.getenv("MISTRAL_API_KEY"),
             "api_type": "mistral",
-            "api_rate_limit": 0.25,
-            "repeat_penalty": 1.1,
             "temperature": 0.0,
-            "seed": 42,
             "stream": False,
-            "native_tool_calls": False,
-            "cache_seed": None,
         }
     ]
 }
 
 
-# print("API key loaded:", os.getenv("MISTRAL_API_KEY"))
+# Opret AI-agent og bruger
+user_proxy = UserProxyAgent(
+    name="User",
+    human_input_mode="ALWAYS",  # Opdateret værdi
+    code_execution_config=False
+)
+
+
+assistant = AssistantAgent(
+    name="ResearchAssistant",
+    llm_config=LLM_CONFIG
+)
+
+# Start samtale
+user_proxy.initiate_chat(
+    assistant,
+    message="Find en forskningsartikel om kunstig intelligens udgivet efter 2020 med mindst 50 citationer."
+)
+
+
+
+
