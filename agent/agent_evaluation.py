@@ -4,83 +4,97 @@
 """
 | Kriterium        | Beskrivelse |
 |------------------|-------------|
-| Relevans         | Passer artiklerne til brugerens emne og krav (årstal, tema, type)? |
-| Kvalitet         | Er artiklerne fra troværdige kilder og akademisk valide (fx citations, journal)? |
-| Detaljegrad      | Indeholder output nok info (titel, forfatter, årstal, link, citations, etc.)? |
+| Relevans         | Passer artiklerne til brugerens emne og krav (årstal, emne mm,)? |
+| Kvalitet         | Er artiklerne fra troværdige kilder og akademisk valide ?        |
+| Detaljegrad      | Indeholder output nok info (titel, årstal, link, citations, etc.)? |
 | Robusthed        | Kan agenten stadig levere noget meningsfuldt ved tvetydige eller ufuldstændige prompts? |
-| Nøjagtighed      | Matcher de præsenterede artikler faktisk de nævnte data (fx citations ≥100)? |
+| Nøjagtighed      | Matcher de præsenterede artikler faktisk de nævnte data  |
 """
 
 # STEP 2: Sample Test Prompts
+
 """
-Typiske:
-- "Find 3 artikler om AI i sundhedssektoren siden 2020 med over 100 citationer"
-- "Vis forskning om bæredygtig energi i Europa, gerne nyere end 2018"
 
-Tvetydige:
-- "Jeg vil gerne have noget om klima"
-- "Find mig banebrydende forskning – det skal bare være godt"
+Typical Prompts (typiske brugsscenarier):
 
-Komplekse:
-- "Find artikler om deep learning til kræftdiagnose, der også inkluderer open-source kode"
+{"topic": "AI", "year_condition": "after", "year": 2015, "min_citations": 100, "limit": 5}
+
+{"topic": "climate change", "year_condition": "before", "year": 2010, "min_citations": 50, "limit": 5}
+
+
+Complex Requests (flere krav kombineret):
+
+{"topic": "AI in healthcare", "year_condition": "after", "year": 2018, "min_citations": 150, "limit": 5}
+
+{"topic": "renewable energy", "year_condition": "before", "year": 2020, "min_citations": 200, "limit": 5}
+
+
+Ambiguous Prompts (uklare eller tvetydige forespørgsler):
+
+{"topic": "deep learning", "year_condition": "after", "year": 2010, "min_citations": 100, "limit": 5}
+
+{"topic": "health", "year_condition": "before", "year": 2000, "min_citations": 50, "limit": 5}
+
+
+Edge Cases or Errors (grænsetilfælde og fejlscenarier):
+
+{"topic": "quantum computing", "year_condition": "after", "year": 1800, "min_citations": 50, "limit": 5}
+
+{"topic": "Xc$#2399", "year_condition": "after", "year": 2015, "min_citations": 0, "limit": 5}
+
+
 """
 
 # STEP 3: LLM-as-Critic Evaluation
 import os
+import re
 import sys
+import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from autogen import ConversableAgent
-from agent.research_agent import generate_reply  # Denne import skal bruges korrekt
 from config import LLM_CONFIG
 
-# Opret kritik-agent med Mistral
+# Evalueringsagent
 critic = ConversableAgent(
     name="Critic",
     llm_config=LLM_CONFIG
 )
 
-def evaluate_response(user_prompt: str, agent_response: str) -> str:
+def evaluate_response(user_prompt: str, agent_response: str) -> dict:
     critic_prompt = f"""
-You are evaluating an academic research assistant AI agent.
+    You are evaluating an academic research assistant AI agent.
 
-Evaluate the agent's output based on the following criteria:
-- Relevance (1-5): Are the results aligned with the user's research topic and filters?
-- Quality (1-5): Are the articles from credible sources with good academic standing?
-- Detail (1-5): Are details like title, author, year, citations, and URL clearly presented?
-- Robustness (1-5): Did the agent handle vague or incomplete prompts meaningfully?
-- Accuracy (1-5): Do the listed papers match the user's filters (e.g., year, citations)?
+    Evaluate the agent's output based on the following criteria:
+    - Relevance (1-5): Are the results aligned with the user's research topic and filters?
+    - Quality (1-5): Are the articles from credible sources with good academic standing?
+    - Detail (1-5): Are details like title, author, year, citations, and URL clearly presented?
+    - Robustness (1-5): Did the agent handle vague or incomplete prompts meaningfully?
+    - Accuracy (1-5): Do the listed papers match the user's filters (e.g., year, citations)?
 
-User Prompt: {user_prompt}
-Agent Response: {agent_response}
+    User Prompt: {user_prompt}
+    Agent Response: {agent_response}
 
-Provide your evaluation as JSON with these fields:
-- relevance
-- quality
-- detail
-- robustness
-- accuracy
-- feedback (a concise explanation of the evaluation using examples from the agent’s response)
-"""
+    Respond ONLY with a valid JSON object in the following format:
+    {{
+        "relevance": int (1-5),
+        "quality": int (1-5),
+        "detail": int (1-5),
+        "robustness": int (1-5),
+        "accuracy": int (1-5),
+        "feedback": string
+    }}
+    """
 
     try:
-        # Generating the evaluation using the critic
-        evaluation_response = critic.generate_reply(messages=[critic_prompt])
-        # Assuming the response is in the form of a JSON-like structure, return it directly
-        return evaluation_response
-    except Exception as e:
-        # Return a more detailed error message
-        return f"Error during evaluation: {str(e)}"
+        evaluation_response = critic.generate_reply(messages=[{"role": "user", "content": critic_prompt}])
+        content = evaluation_response.get("content", "{}")
 
-# Eksempel: Samlet flow med generate_reply og evaluering
-if __name__ == "__main__":
-    prompt = "Find artikler om AI i sundhedssektoren siden 2020 med over 100 citationer"
-    print(f"\nPrompt: {prompt}")
-    
-    # Kald generate_reply() med brugerens prompt og få agentens svar
-    agent_output = generate_reply(user_prompt=prompt)  # Passer input korrekt
-    print(f"\nAgentens svar:\n{agent_output}")
-    
-    # Evaluering af agentens output
-    evaluation = evaluate_response(prompt, agent_output)
-    print(f"\nEvaluering:\n{evaluation}")
+        json_str = re.search(r"\{.*\}", content, re.DOTALL).group()
+        return json.loads(json_str)
+
+    except json.JSONDecodeError:
+        return {"error": "Invalid JSON from critic"}
+    except Exception as e:
+        return {"error": f"An error occurred: {str(e)}"}
+
