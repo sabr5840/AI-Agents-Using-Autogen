@@ -30,6 +30,8 @@ Agenten benytter følgende komponenter:
 
 3. Resultatet er en liste med forskningsartikler, som opfylder kravene.
 
+4. Listen forskningsartikler bliver evalueret af kritik agenten og feedback bliver udskrevet til user
+
 ## 🗂 Projektstruktur
 
 - `agent/research_agent.py`: Selve agentens logik og brugerinput
